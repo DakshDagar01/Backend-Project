@@ -1,7 +1,7 @@
 import asyncHandler from "../utils/asyncHandler.js"
 import ApiError from "../utils/ApiError.js"
 import User from "../models/user.model.js"
-import {uploadOnCloudinary} from "../utils/Cloudinary.js"
+import {uploadOnCloudinary,deleteFromCloudinary} from "../utils/Cloudinary.js"
 import ApiResponse from "../utils/ApiResponse.js"
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose"
@@ -157,7 +157,6 @@ const refreshAccessToken=asyncHandler(async(req,res)=>{
         throw new ApiError(400,"unauthorized request")
     }
     const decodedToken=jwt.verify(incomingRefreshToken,process.env.Refresh_TOKEN_SECRET)
-    console.log(decodedToken)
     const user=await User.findOne({_id:decodedToken?._id})
     if(!user){
         throw new ApiError(401,"Invalid Refresh Token")
@@ -186,8 +185,7 @@ const refreshAccessToken=asyncHandler(async(req,res)=>{
 const changeCurrentPassword=asyncHandler(async(req,res)=>{
     const {oldPassword,newPassword}=req.body
 
-    const user=User.findById(req.user?._id)
-
+    const user=await User.findById(req.user?._id)
     const isPasswordCorrect=await user.isPasswordCorrect(oldPassword)
 
     if(!isPasswordCorrect){
@@ -213,11 +211,11 @@ const updateAccountDetails=asyncHandler(async(req,res)=>{
     if(!fullname || !email){
         throw new ApiError(400,"All Fields Are required")
     }
-    const user=User.findByIdAndUpdate(
+    const user=await User.findByIdAndUpdate(
         req.user?._id,
         {
             $set:{
-                password,
+                fullname,
                 email
             }
         },
@@ -225,7 +223,7 @@ const updateAccountDetails=asyncHandler(async(req,res)=>{
             new:true
         }
     ).select("-password -refreshToken")
-
+    console.log(user)
     return res.status(200).json(
         new ApiResponse(200,user,"Account Details Updated Successfully")
     )
@@ -239,7 +237,13 @@ const updateUserAvatar=asyncHandler(async(req,res)=>{
     if(!newAvatar.url){
         throw new ApiError(400,"Error while Uploading on Cloduinary")
     }
-    const user=await findByIdAndUpdate(
+
+    const user1=await User.findById(req.user?._id)
+    const deleted=await deleteFromCloudinary(user1.avatar)  
+    if(!deleted){
+        throw new ApiError(500,"Unable to delete from Cloudinary")
+    }
+    const user=await User.findByIdAndUpdate(
         req.user?._id,
         {
             $set:{
@@ -264,7 +268,14 @@ const updateUserCoverImage=asyncHandler(async(req,res)=>{
     if(!newCoverImage.url){
         throw new ApiError(400,"Error while Uploading on Cloudinary")
     }
-    const user=await findByIdAndUpdate(
+
+    const user1=await User.findById(req.user?._id)
+    const deleted=await deleteFromCloudinary(user1.coverImage)  
+    if(!deleted){
+        throw new ApiError(500,"Unable to delete from Cloudinary")
+    }
+
+    const user=await User.findByIdAndUpdate(
         req.user?._id,
         {
             $set:{
@@ -328,7 +339,7 @@ const getUserChannelProfile=asyncHandler(async(req,res)=>{
             $project:{
                 fullname:1,
                 username:1,
-                emai:1,
+                email:1,
                 avatar:1,
                 coverImage:1,
                 subscribersCount:1,
@@ -337,8 +348,6 @@ const getUserChannelProfile=asyncHandler(async(req,res)=>{
             }
         }
     ])
-    console.log("This is the channel",channel)
-
     if(!channel?.length){
         throw new ApiError(400,"Channel does not exists")
     }
